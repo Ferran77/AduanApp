@@ -3,6 +3,7 @@
 import { useState, useEffect, startTransition } from "react";
 import CameraCapture from "@/components/CameraCapture";
 import { searchProduct } from "@/lib/search";
+import { generateExportable, generatePDF } from "@/lib/export";
 import { supabase } from "@/lib/supabase";
 
 type SearchResult = ReturnType<typeof searchProduct>[number];
@@ -25,16 +26,15 @@ export default function Home() {
 
   useEffect(() => {
     const loadLearning = async () => {
-      const { data } = await supabase
-        .from("learning_data")
-        .select("*");
+      const { data, error } = await supabase.from("learning_data").select("*");
+
+      console.log("📦 learning cargado:", data);
 
       setLearningData(data || []);
     };
 
     loadLearning();
   }, []);
-
 
   const loadHistory = async () => {
     const { data } = await supabase
@@ -45,8 +45,8 @@ export default function Home() {
     setHistory(data ?? []);
   };
 
-  const runSearch = (input: string) => {
-    const res = searchProduct(input, learningData); // 👈 FIX AQUÍ
+  const runSearch = (input: string, dataOverride?: any[]) => {
+    const res = searchProduct(input, dataOverride || learningData);
     setResults(res);
     return res;
   };
@@ -73,7 +73,6 @@ export default function Home() {
   const handleImageUpload = async (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
-
 
     console.log("Imagen seleccionada:", file.name);
     setImageName(file.name);
@@ -121,7 +120,6 @@ export default function Home() {
       if (insertData) {
         setLastSearchId(insertData.id);
       }
-
     } catch (err) {
       console.error("Error con IA:", err);
     }
@@ -139,33 +137,32 @@ export default function Home() {
       .update({ selected_fraccion: item.fraccion })
       .eq("id", lastSearchId);
 
-    // 🔥 GUARDAR APRENDIZAJE SIEMPRE
-    await supabase
-      .from("learning_data")
-      .select("*")
-      .then(({ data }) => {
-        setLearningData(data || []);
-
-        // 🔥 RE-EJECUTA BÚSQUEDA CON APRENDIZAJE
-        runSearch(query);
-      });
+    // 🔥 🔥 🔥 AQUI ESTABA EL BUG — INSERTAR APRENDIZAJE
+    await supabase.from("learning_data").insert([
+      {
+        query,
+        selected_fraccion: item.fraccion,
+      },
+    ]);
 
     console.log("🧠 Aprendizaje guardado:", query, item.fraccion);
 
-    await loadHistory();
-
-    alert("Fracción seleccionada guardada");
-
+    // 🔥 ahora sí obtenemos todo actualizado
     const { data: newLearning } = await supabase
       .from("learning_data")
       .select("*");
 
+    console.log("🧠 NUEVO learning:", newLearning);
+
+    // 🔥 recalculamos con datos reales
+    const res = searchProduct(query, newLearning || []);
+    setResults(res);
+
     setLearningData(newLearning || []);
 
-    // 🔥 espera un tick antes de recalcular
-    setTimeout(() => {
-      runSearch(query);
-    }, 50);
+    await loadHistory();
+
+    alert("Fracción seleccionada guardada");
   };
 
   useEffect(() => {
@@ -179,6 +176,7 @@ export default function Home() {
         });
       });
   }, []);
+  const bestResult = results[0];
 
   return (
     <main className="p-10">
@@ -246,34 +244,54 @@ export default function Home() {
               <strong>Confianza:</strong> {item.confidence}%
             </p>
 
-            {item.questions &&
-              item.questions.map(
-                (q: { question: string; options: string[] }, i: number) => (
-                <div key={i} className="mt-2">
-                  <p className="font-semibold">{q.question}</p>
+            <p>
+              <strong>Descripción:</strong> {item.descripcion}
+            </p>
+            <p>
+              <strong>IGI:</strong> {item.igi} | <strong>IVA:</strong>{" "}
+              {item.iva}
+            </p>
 
-                  <div className="flex gap-2 mt-1">
-                    {q.options.map((opt: string, j: number) => (
-                      <button key={j} className="border px-2 py-1">
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                )
-              )}
+            {item.nom?.length > 0 && (
+              <p>
+                <strong>NOM:</strong> {item.nom.join(", ")}
+              </p>
+            )}
 
             {item.recommended && (
-              <span className="text-xs bg-yellow-300 px-2 py-1 ml-2 rounded">
+              <span className="text-xs bg-yellow-300 px-2 py-1 mt-2 inline-block rounded">
                 🔥 Recomendado
               </span>
             )}
+
+            {/* 👇 AQUÍ VA EL MODO EXPERTO */}
+            {item.explanation && (
+              <div className="mt-3 p-2 bg-gray-900 rounded text-sm text-gray-300">
+                <p className="font-semibold">🧠 ¿Por qué?</p>
+                <ul className="list-disc ml-5">
+                  {item.explanation.map((exp: string, i: number) => (
+                    <li key={i}>{exp}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <button
-              className="bg-green-500 text-white px-3 py-1 mt-2"
+              className="bg-green-500 text-white px-3 py-1 mt-3"
               onClick={() => handleSelect(item)}
             >
               Elegir esta fracción
             </button>
+            <button
+              className="bg-purple-600 text-white px-3 py-1 mt-2 ml-2"
+              onClick={() => generateExportable(item)}
+            >
+              📄 Exportar dictamen
+            </button>
+
+            <button 
+            className="bg-blue-900 text-white px-3 py-1 mt-2 ml-2"
+            onClick={() => generatePDF(item)}>📄 Exportar PDF</button>
           </div>
         ))}
         <div className="mt-10">
