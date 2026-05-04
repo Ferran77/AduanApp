@@ -1,56 +1,82 @@
 import { catalog } from "@/app/data/catalog";
 
-export function searchProduct(query: string) {
-  if (!query || query.trim().length < 2) {
-    return [];
+export function searchProduct(query: string, learningData: any[] = []) {
+  const lowerQuery = query.toLowerCase();
+  const queryWords = lowerQuery.split(" ");
+
+  const results: any[] = [];
+
+  console.log("🧠 learningData:", learningData);
+
+  function getLearningBoost(fraccionCode: string, learningData: any[]) {
+    let count = 0;
+
+    learningData.forEach((learn) => {
+      const learned = String(learn.selected_fraccion).trim();
+      const current = String(fraccionCode).trim();
+
+      if (learned === current) {
+        count++;
+      }
+    });
+
+    return count;
   }
-
-  const normalize = (text: string) =>
-    text.toLowerCase().replace(/[^\w\s]/g, "").trim();
-
-  const cleanQuery = normalize(query);
-  const queryWords = cleanQuery.split(" ");
-
-  let results: any[] = [];
 
   catalog.forEach((item) => {
     item.fracciones.forEach((fraccion) => {
       let score = 0;
 
-      fraccion.keywords.forEach((keyword) => {
-        const cleanKeyword = normalize(keyword);
+      // 🔹 MATCH BASE
+      fraccion.keywords.forEach((keyword: string) => {
+        const lowerKeyword = keyword.toLowerCase();
 
-        queryWords.forEach((word) => {
-          if (word === cleanKeyword) {
-            score += 3; // match fuerte
-          }
-        });
+        if (lowerQuery.includes(lowerKeyword)) {
+          score += 3;
+        } else {
+          queryWords.forEach((word) => {
+            if (word === lowerKeyword) score += 2;
+          });
+        }
       });
 
-      // 👉 NUEVO FILTRO INTELIGENTE
-      if (score > 0) {
-        const maxScore = fraccion.keywords.length * 3;
+      // 🔥 APRENDIZAJE
+      learningData.forEach((learn) => {
+        const learnedQuery = learn.query.toLowerCase();
 
-        const confidence = Math.min(
-          Math.round((score / maxScore) * 100),
-          100
-        );
+        const similarity =
+          lowerQuery.includes(learnedQuery) ||
+          learnedQuery.includes(lowerQuery) ||
+          queryWords.some((word) => learnedQuery.includes(word));
+
+        if (similarity) {
+          if (learn.selected_fraccion === fraccion.code) {
+            console.log("🔥 MATCH LEARNING:", learnedQuery, fraccion.code);
+            score += 5;
+          }
+        }
+      });
+
+      if (score > 0) {
+        const learningBoost = getLearningBoost(fraccion.code, learningData);
+
+        score += learningBoost * 3; // 🔥 peso ajustable
+
+        const confidence = Math.min(Math.round(score * 10), 100);
 
         results.push({
           producto: item.name,
           fraccion: fraccion.code,
           noms: fraccion.noms,
           confidence,
-          questions: item.questions || []
+          questions: item.questions || [],
+          recommended: learningBoost > 0,
         });
       }
     });
   });
 
-  // 👉 FILTRO FINAL (CLAVE)
-  const filtered = results.filter((r) => r.confidence >= 30);
-
-  return filtered
+  return results
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 3);
 }
