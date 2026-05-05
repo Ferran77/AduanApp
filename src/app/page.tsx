@@ -5,6 +5,7 @@ import CameraCapture from "@/components/CameraCapture";
 import { searchProduct } from "@/lib/search";
 import { generateExportable, generatePDF } from "@/lib/export";
 import { supabase } from "@/lib/supabase";
+import Image from "next/image";
 
 type SearchResult = ReturnType<typeof searchProduct>[number];
 
@@ -16,21 +17,33 @@ type SearchHistoryRow = {
   results?: unknown;
 };
 
+type LearningDataRow = {
+  id?: string;
+  query: string;
+  selected_fraccion: string | null;
+  created_at?: string;
+};
+
+/** Compatible con `<input type="file">` y el evento sintético de `CameraCapture`. */
+type ImageFileChange = {
+  target: { files?: FileList | readonly File[] | null };
+};
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [history, setHistory] = useState<SearchHistoryRow[]>([]);
   const [lastSearchId, setLastSearchId] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
-  const [learningData, setLearningData] = useState<any[]>([]);
+  const [learningData, setLearningData] = useState<LearningDataRow[]>([]);
 
   useEffect(() => {
     const loadLearning = async () => {
-      const { data, error } = await supabase.from("learning_data").select("*");
+      const { data } = await supabase.from("learning_data").select("*");
 
       console.log("📦 learning cargado:", data);
 
-      setLearningData(data || []);
+      setLearningData((data as LearningDataRow[] | null) ?? []);
     };
 
     loadLearning();
@@ -45,7 +58,7 @@ export default function Home() {
     setHistory(data ?? []);
   };
 
-  const runSearch = (input: string, dataOverride?: any[]) => {
+  const runSearch = (input: string, dataOverride?: LearningDataRow[]) => {
     const res = searchProduct(input, dataOverride || learningData);
     setResults(res);
     return res;
@@ -54,7 +67,7 @@ export default function Home() {
   const handleSearch = async () => {
     const res = runSearch(query);
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("search_history")
       .insert([
         {
@@ -70,8 +83,8 @@ export default function Home() {
     }
   };
 
-  const handleImageUpload = async (e: any) => {
-    const file = e.target.files[0];
+  const handleImageUpload = async (e: ImageFileChange) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     console.log("Imagen seleccionada:", file.name);
@@ -106,7 +119,7 @@ export default function Home() {
       const resSearch = runSearch(desc);
 
       // 👉 GUARDA IGUAL QUE handleSearch
-      const { data: insertData, error } = await supabase
+      const { data: insertData } = await supabase
         .from("search_history")
         .insert([
           {
@@ -125,7 +138,7 @@ export default function Home() {
     }
   };
 
-  const handleSelect = async (item: any) => {
+  const handleSelect = async (item: SearchResult) => {
     if (!lastSearchId) {
       console.log("❌ No hay lastSearchId");
       return;
@@ -155,10 +168,10 @@ export default function Home() {
     console.log("🧠 NUEVO learning:", newLearning);
 
     // 🔥 recalculamos con datos reales
-    const res = searchProduct(query, newLearning || []);
+    const res = searchProduct(query, (newLearning as LearningDataRow[] | null) ?? []);
     setResults(res);
 
-    setLearningData(newLearning || []);
+    setLearningData((newLearning as LearningDataRow[] | null) ?? []);
 
     await loadHistory();
 
@@ -176,12 +189,17 @@ export default function Home() {
         });
       });
   }, []);
-  const bestResult = results[0];
 
   return (
     <main className="p-10">
-      <h1 className="text-2xl font-bold mb-4">ClasifIAduana 🚀</h1>
-
+      <div className="flex items-center gap-3 mb-4">
+  <Image
+    src="/logo.png"
+    alt="ClasifIAduana"
+    width={170}
+    height={170}
+  />
+</div>
       {imageName && (
         <div className="mb-2">
           <p className="text-sm text-gray-500">
