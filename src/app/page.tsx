@@ -2,12 +2,18 @@
 
 import { useState, useEffect, startTransition } from "react";
 import CameraCapture from "@/components/CameraCapture";
-import { searchProduct } from "@/lib/search";
+import {
+  searchProduct,
+  type LearningDataRow,
+  type SearchResult,
+} from "@/lib/search";
 import { generateExportable, generatePDF } from "@/lib/export";
-import { supabase } from "@/lib/supabase";
+import {
+  formatSupabaseError,
+  logSupabaseError,
+  supabase,
+} from "@/lib/supabase";
 import Image from "next/image";
-
-type SearchResult = ReturnType<typeof searchProduct>[number];
 
 type SearchHistoryRow = {
   selected_fraccion: string | null;
@@ -15,13 +21,6 @@ type SearchHistoryRow = {
   query: string;
   created_at?: string;
   results?: unknown;
-};
-
-type LearningDataRow = {
-  id?: string;
-  query: string;
-  selected_fraccion: string | null;
-  created_at?: string;
 };
 
 /** Compatible con `<input type="file">` y el evento sintético de `CameraCapture`. */
@@ -36,27 +35,66 @@ export default function Home() {
   const [lastSearchId, setLastSearchId] = useState<string | null>(null);
   const [imageName, setImageName] = useState("");
   const [learningData, setLearningData] = useState<LearningDataRow[]>([]);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
 
-  useEffect(() => {
-    const loadLearning = async () => {
-      const { data } = await supabase.from("learning_data").select("*");
-
-      console.log("📦 learning cargado:", data);
-
-      setLearningData((data as LearningDataRow[] | null) ?? []);
-    };
-
-    loadLearning();
-  }, []);
+  const loadLearning = async () => {
+    const { data, error } = await supabase.from("learning_data").select("*");
+    if (error) {
+      logSupabaseError("Error cargando aprendizaje", error);
+      setDbError(formatSupabaseError(error));
+      return;
+    }
+    setLearningData(data ?? []);
+  };
 
   const loadHistory = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("search_history")
       .select("*")
       .order("created_at", { ascending: false });
 
+    if (error) {
+      logSupabaseError("Error cargando historial", error);
+      setDbError(formatSupabaseError(error));
+      return;
+    }
+
     setHistory(data ?? []);
   };
+
+  const saveSearchSession = async (
+    searchQuery: string,
+    searchResults: SearchResult[],
+  ): Promise<string | null> => {
+    const { data, error } = await supabase
+      .from("search_history")
+      .insert([
+        {
+          query: searchQuery,
+          results: searchResults,
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (error) {
+      logSupabaseError("Error guardando búsqueda", error);
+      setDbError(formatSupabaseError(error));
+      return null;
+    }
+
+    setDbError(null);
+    return data?.id ?? null;
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      await loadLearning();
+    };
+    void init();
+  }, []);
 
   const runSearch = (input: string, dataOverride?: LearningDataRow[]) => {
     const res = searchProduct(input, dataOverride || learningData);
@@ -65,21 +103,16 @@ export default function Home() {
   };
 
   const handleSearch = async () => {
+    if (!query.trim()) return;
+
+    setIsSavingSearch(true);
     const res = runSearch(query);
+    const id = await saveSearchSession(query, res);
+    setIsSavingSearch(false);
 
-    const { data } = await supabase
-      .from("search_history")
-      .insert([
-        {
-          query,
-          results: res,
-        },
-      ])
-      .select()
-      .single();
-
-    if (data) {
-      setLastSearchId(data.id);
+    if (id) {
+      setLastSearchId(id);
+      await loadHistory();
     }
   };
 
@@ -116,22 +149,14 @@ export default function Home() {
 
       setQuery(desc);
 
+      setIsSavingSearch(true);
       const resSearch = runSearch(desc);
+      const id = await saveSearchSession(desc, resSearch);
+      setIsSavingSearch(false);
 
-      // 👉 GUARDA IGUAL QUE handleSearch
-      const { data: insertData } = await supabase
-        .from("search_history")
-        .insert([
-          {
-            query: desc,
-            results: resSearch,
-          },
-        ])
-        .select()
-        .single();
-
-      if (insertData) {
-        setLastSearchId(insertData.id);
+      if (id) {
+        setLastSearchId(id);
+        await loadHistory();
       }
     } catch (err) {
       console.error("Error con IA:", err);
@@ -139,67 +164,114 @@ export default function Home() {
   };
 
   const handleSelect = async (item: SearchResult) => {
-    if (!lastSearchId) {
-      console.log("❌ No hay lastSearchId");
+    if (!query.trim()) {
+      alert("No hay una búsqueda activa para asociar esta fracción.");
       return;
     }
 
-    // ✔ actualizar historial
-    await supabase
-      .from("search_history")
-      .update({ selected_fraccion: item.fraccion })
-      .eq("id", lastSearchId);
+    setIsSelecting(true);
 
-    // 🔥 🔥 🔥 AQUI ESTABA EL BUG — INSERTAR APRENDIZAJE
-    await supabase.from("learning_data").insert([
+    let searchId = lastSearchId;
+
+    if (!searchId) {
+      const { data, error } = await supabase
+        .from("search_history")
+        .insert([
+          {
+            query,
+            results,
+            selected_fraccion: item.fraccion,
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (error) {
+        logSupabaseError("Error creando registro de historial", error);
+        setDbError(formatSupabaseError(error));
+        setIsSelecting(false);
+        alert(`No se pudo guardar la selección: ${formatSupabaseError(error)}`);
+        return;
+      }
+
+      searchId = data?.id ?? null;
+      setLastSearchId(searchId);
+    } else {
+      const { error } = await supabase
+        .from("search_history")
+        .update({ selected_fraccion: item.fraccion })
+        .eq("id", searchId);
+
+      if (error) {
+        logSupabaseError("Error actualizando historial", error);
+        setDbError(formatSupabaseError(error));
+        setIsSelecting(false);
+        alert(`No se pudo guardar la selección: ${formatSupabaseError(error)}`);
+        return;
+      }
+    }
+
+    const { error: learnError } = await supabase.from("learning_data").insert([
       {
         query,
         selected_fraccion: item.fraccion,
       },
     ]);
 
-    console.log("🧠 Aprendizaje guardado:", query, item.fraccion);
+    if (learnError) {
+      logSupabaseError("Error guardando aprendizaje", learnError);
+      setDbError(formatSupabaseError(learnError));
+      setIsSelecting(false);
+      alert(
+        `No se pudo guardar el aprendizaje: ${formatSupabaseError(learnError)}`,
+      );
+      return;
+    }
 
-    // 🔥 ahora sí obtenemos todo actualizado
-    const { data: newLearning } = await supabase
+    setDbError(null);
+
+    const { data: newLearning, error: reloadError } = await supabase
       .from("learning_data")
       .select("*");
 
-    console.log("🧠 NUEVO learning:", newLearning);
-
-    // 🔥 recalculamos con datos reales
-    const res = searchProduct(query, (newLearning as LearningDataRow[] | null) ?? []);
-    setResults(res);
-
-    setLearningData((newLearning as LearningDataRow[] | null) ?? []);
+    if (reloadError) {
+      logSupabaseError("Error recargando aprendizaje", reloadError);
+      setDbError(formatSupabaseError(reloadError));
+    } else {
+      setLearningData(newLearning ?? []);
+      setResults(searchProduct(query, newLearning ?? []));
+    }
 
     await loadHistory();
+    setIsSelecting(false);
 
     alert("Fracción seleccionada guardada");
   };
 
   useEffect(() => {
-    void supabase
-      .from("search_history")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        startTransition(() => {
-          setHistory(data ?? []);
-        });
-      });
+    startTransition(() => {
+      void loadHistory();
+    });
   }, []);
 
   return (
     <main className="p-10">
+      {dbError && (
+        <div
+          role="alert"
+          className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800"
+        >
+          {dbError}
+        </div>
+      )}
+
+      {isSavingSearch && (
+        <p className="mb-2 text-sm text-gray-500">Guardando búsqueda…</p>
+      )}
+
       <div className="flex items-center gap-3 mb-4">
-  <Image
-    src="/logo.png"
-    alt="ClasifIAduana"
-    width={170}
-    height={170}
-  />
-</div>
+        <Image src="/logo.png" alt="ClasifIAduana" width={170} height={170} />
+      </div>
       {imageName && (
         <div className="mb-2">
           <p className="text-sm text-gray-500">
@@ -218,10 +290,11 @@ export default function Home() {
         />
 
         <button
-          onClick={handleSearch}
-          className="bg-blue-500 text-white px-4 py-2"
+          onClick={() => void handleSearch()}
+          disabled={isSavingSearch}
+          className="bg-blue-500 text-white px-4 py-2 disabled:opacity-50"
         >
-          Buscar
+          {isSavingSearch ? "Buscando…" : "Buscar"}
         </button>
 
         <label className="border p-2 cursor-pointer bg-blue-900 hover:bg-gray-200">
@@ -270,9 +343,9 @@ export default function Home() {
               {item.iva}
             </p>
 
-            {item.nom?.length > 0 && (
+            {item.nom_seguridad?.length > 0 && (
               <p>
-                <strong>NOM:</strong> {item.nom.join(", ")}
+                <strong>NOM:</strong> {item.nom_seguridad.join(", ")}
               </p>
             )}
 
@@ -285,20 +358,110 @@ export default function Home() {
             {/* 👇 AQUÍ VA EL MODO EXPERTO */}
             {item.explanation && (
               <div className="mt-3 p-2 bg-gray-900 rounded text-sm text-gray-300">
-                <p className="font-semibold">🧠 ¿Por qué?</p>
-                <ul className="list-disc ml-5">
-                  {item.explanation.map((exp: string, i: number) => (
-                    <li key={i}>{exp}</li>
-                  ))}
-                </ul>
+                <details className="mt-3 bg-gray-950 p-3 rounded">
+                  <summary className="cursor-pointer font-semibold text-cyan-400">
+                  📋 Ver dictamen técnico
+                  </summary>
+
+                  <div className="mt-3 text-sm space-y-2">
+                    <p>
+                      <strong>Categoría:</strong> {item.categoria}
+                    </p>
+
+                    <p>
+                      <strong>Material:</strong> {item.material}
+                    </p>
+
+                    <p>
+                      <strong>Uso:</strong> {item.uso}
+                    </p>
+
+                    <p>
+                      <strong>NICO:</strong> {item.nico}
+                    </p>
+
+                    <p>
+                      <strong>País origen:</strong> {item.pais_origen}
+                    </p>
+
+                    <p>
+                      <strong>Tratados:</strong> {item.tratados?.join(", ")}
+                    </p>
+
+                    <p>
+                      <strong>DTA:</strong> {item.dta}
+                    </p>
+
+                    <p>
+                      <strong>Clave pedimento:</strong> {item.clave_pedimento}
+                    </p>
+
+                    <p>
+                      <strong>Unidad LIGIE:</strong> {item.unidad_ligie}
+                    </p>
+
+                    <p>
+                      <strong>Fundamento:</strong> {item.fundamento}
+                    </p>
+
+                    <p>
+                      <strong>Notas legales:</strong> {item.notas_legales}
+                    </p>
+
+                    {item.nom_seguridad?.length > 0 && (
+                      <p>
+                        <strong>NOM Seguridad:</strong>{" "}
+                        {item.nom_seguridad.join(", ")}
+                      </p>
+                    )}
+
+                    {item.nom_info?.length > 0 && (
+                      <p>
+                        <strong>NOM Info:</strong> {item.nom_info.join(", ")}
+                      </p>
+                    )}
+
+                    {item.permisos?.length > 0 && (
+                      <p>
+                        <strong>Permisos:</strong> {item.permisos.join(", ")}
+                      </p>
+                    )}
+
+                    {item.identificadores?.length > 0 && (
+                      <p>
+                        <strong>Identificadores:</strong>{" "}
+                        {item.identificadores.join(", ")}
+                      </p>
+                    )}
+
+                    <div className="mt-3 p-2 bg-yellow-950 rounded">
+                      <p>⚠️ {item.alerta_clasificacion}</p>
+
+                      <p className="mt-2">🔍 {item.alerta_reconocimiento}</p>
+                    </div>
+                    {/* 🧠 EXPLICACIÓN IA */}
+                    <div className="mt-4 p-3 bg-gray-900 rounded">
+                      <p className="font-semibold text-pink-400 mb-2">
+                        🧠 Explicación IA
+                      </p>
+
+                      <ul className="list-disc ml-5 text-gray-300">
+                        {item.explanation.map((exp: string, i: number) => (
+                          <li key={i}>{exp}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </details>
               </div>
             )}
 
             <button
-              className="bg-green-500 text-white px-3 py-1 mt-3"
-              onClick={() => handleSelect(item)}
+              className="bg-green-500 text-white px-3 py-1 mt-3 disabled:opacity-50"
+              disabled={isSavingSearch || isSelecting || !query.trim()}
+              onClick={() => void handleSelect(item)}
             >
-              Elegir esta fracción
+              {isSelecting ? "Guardando…" : "Elegir esta fracción"}
             </button>
             <button
               className="bg-purple-600 text-white px-3 py-1 mt-2 ml-2"
@@ -307,16 +470,25 @@ export default function Home() {
               📄 Exportar dictamen
             </button>
 
-            <button 
-            className="bg-blue-900 text-white px-3 py-1 mt-2 ml-2"
-            onClick={() => generatePDF(item)}>📄 Exportar PDF</button>
+            <button
+              className="bg-blue-900 text-white px-3 py-1 mt-2 ml-2"
+              onClick={() => generatePDF(item)}
+            >
+              📄 Exportar PDF
+            </button>
           </div>
         ))}
         <div className="mt-10">
           <h2 className="text-xl font-bold">Historial</h2>
 
-          {history.map((item, index) => (
-            <div key={index} className="border p-2 mt-2">
+          {history.length === 0 && !dbError && (
+            <p className="mt-2 text-sm text-gray-500">
+              Aún no hay búsquedas guardadas.
+            </p>
+          )}
+
+          {history.map((item) => (
+            <div key={item.id ?? item.created_at} className="border p-2 mt-2">
               <p>
                 <strong>Búsqueda:</strong> {item.query}
               </p>

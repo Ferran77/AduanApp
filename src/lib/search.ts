@@ -1,21 +1,73 @@
 import { catalog } from "@/app/data/catalog";
 
-export function searchProduct(query: string, learningData: any[] = []) {
+type CatalogFraccion = (typeof catalog)[number]["fracciones"][number];
+
+type CatalogQuestion = {
+  question: string;
+  options: string[];
+};
+
+export type SearchResult = {
+  producto: string;
+  fraccion: string;
+  data: CatalogFraccion;
+  descripcion?: string;
+  categoria?: string;
+  material?: string;
+  uso?: string;
+  unidad?: string;
+  nico?: string;
+  pais_origen?: string;
+  tratados: string[];
+  forma_aplicacion: string[];
+  igi?: string;
+  iva?: string;
+  dta?: string;
+  otros_impuestos: string[];
+  nom_seguridad: string[];
+  nom_info: string[];
+  permisos: string[];
+  identificadores: string[];
+  clave_pedimento?: string;
+  unidad_ligie?: string;
+  fundamento?: string;
+  notas_legales?: string;
+  alerta_clasificacion?: string;
+  alerta_reconocimiento?: string;
+  confidence: number;
+  questions: CatalogQuestion[];
+  recommended: boolean;
+  explanation: string[];
+};
+
+export type LearningDataRow = {
+  id?: string;
+  query: string;
+  selected_fraccion: string | null;
+  created_at?: string;
+};
+
+export function searchProduct(
+  query: string,
+  learningData: LearningDataRow[] = []
+) {
   const lowerQuery = query.toLowerCase().trim();
   const queryWords = lowerQuery.split(" ").filter(Boolean);
 
-  const results: any[] = [];
+  const results: SearchResult[] = [];
 
   // 🧠 normaliza string
   const normalize = (str: string) =>
     String(str).toLowerCase().trim();
 
   // 🔥 conteo de aprendizaje por fracción
-  function getLearningBoost(fraccionCode: string, data: any[]) {
+  function getLearningBoost(fraccionCode: string, data: LearningDataRow[]) {
     const current = normalize(fraccionCode);
 
     const count = data.filter(
-      (l) => normalize(l.selected_fraccion) === current
+      (l) =>
+        l.selected_fraccion != null &&
+        normalize(l.selected_fraccion) === current
     ).length;
 
     return count;
@@ -88,12 +140,51 @@ export function searchProduct(query: string, learningData: any[] = []) {
           // 👇 accesos rápidos para UI
           descripcion: fraccion.general?.descripcion,
           categoria: fraccion.general?.categoria,
+          material: fraccion.general?.material,
+          uso: fraccion.general?.uso,
           unidad: fraccion.general?.unidad,
-
+          nico: fraccion.general?.nico,
+          
+          pais_origen: fraccion.comercio?.pais_origen,
+          tratados: fraccion.comercio?.tratados || [],
+          forma_aplicacion:
+            fraccion.comercio?.forma_aplicacion || [],
+          
           igi: fraccion.impuestos?.igi,
           iva: fraccion.impuestos?.iva,
-
-          nom: fraccion.regulaciones?.nom || [],
+          dta: fraccion.impuestos?.dta,
+          otros_impuestos:
+            fraccion.impuestos?.otros || [],
+          
+          nom_seguridad:
+            fraccion.regulaciones?.nom_seguridad || [],
+          
+          nom_info:
+            fraccion.regulaciones?.nom_info || [],
+          
+          permisos:
+            fraccion.regulaciones?.permisos || [],
+          
+          identificadores:
+            fraccion.regulaciones?.identificadores || [],
+          
+          clave_pedimento:
+            fraccion.pedimento?.clave,
+          
+          unidad_ligie:
+            fraccion.pedimento?.unidad_ligie,
+          
+          fundamento:
+            fraccion.legales?.fundamento,
+          
+          notas_legales:
+            fraccion.legales?.notas,
+          
+          alerta_clasificacion:
+            fraccion.alertas?.clasificacion,
+          
+          alerta_reconocimiento:
+            fraccion.alertas?.reconocimiento,
 
           confidence,
           questions: item.questions || [],
