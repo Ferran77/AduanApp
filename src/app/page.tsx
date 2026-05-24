@@ -255,7 +255,7 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="p-10">
+    <main className="mx-auto max-w-7xl p-6 md:p-10">
       {dbError && (
         <div
           role="alert"
@@ -280,44 +280,136 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row gap-2 mb-4">
-        <input
-          type="text"
-          placeholder="Describe tu producto..."
-          className="border p-2 w-full"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-
-        <button
-          onClick={() => void handleSearch()}
-          disabled={isSavingSearch}
-          className="bg-blue-500 text-white px-4 py-2 disabled:opacity-50"
-        >
-          {isSavingSearch ? "Buscando…" : "Buscar"}
-        </button>
-
-        <label className="border p-2 cursor-pointer bg-blue-900 hover:bg-gray-200">
-          📸 Subir imagen
+      <div
+        className="
+    mb-6
+    flex
+    flex-col
+    gap-4
+    rounded-3xl
+    border
+    border-slate-800
+    bg-slate-950/80
+    p-5
+    shadow-xl
+    shadow-black/30
+    backdrop-blur
+  "
+      >
+        {/* 🔍 INPUT */}
+        <div className="relative flex-1">
           <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleImageUpload}
-            className="hidden"
+            type="text"
+            placeholder="Describe tu mercancía o producto..."
+            className="
+        w-full
+        rounded-2xl
+        border
+        border-slate-700
+        bg-slate-900
+        px-5
+        py-4
+        text-lg
+        text-white
+        outline-none
+        transition-all
+        duration-200
+        placeholder:text-slate-500
+        focus:border-cyan-400
+        focus:ring-2
+        focus:ring-cyan-500/20
+      "
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
           />
-        </label>
 
-        <CameraCapture
-          onCapture={(file) => {
-            // reutilizamos tu lógica existente 👇
-            const fakeEvent = {
-              target: { files: [file] },
-            };
+          <span
+            className="
+        pointer-events-none
+        absolute
+        right-4
+        top-1/2
+        -translate-y-1/2
+        text-slate-500
+      "
+          >
+            🔍
+          </span>
+        </div>
 
-            handleImageUpload(fakeEvent);
-          }}
-        />
+        {/* 🚀 ACTIONS */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {/* 🔎 BUSCAR */}
+          <button
+            onClick={() => void handleSearch()}
+            disabled={isSavingSearch}
+            className="
+       w-full
+  rounded-2xl
+  bg-cyan-500
+  py-3
+  font-semibold
+  text-slate-950
+  transition-all
+  duration-200
+  hover:bg-cyan-400
+  hover:scale-[1.02]
+  disabled:opacity-50
+      "
+          >
+            {isSavingSearch ? "Buscando…" : "Buscar"}
+          </button>
+
+          {/* 📸 SUBIR */}
+          <label
+            className="
+         flex
+  w-full
+  cursor-pointer
+  items-center
+  justify-center
+  gap-2
+  rounded-2xl
+  border
+  border-slate-700
+  bg-slate-900
+  py-3
+  font-medium
+  text-white
+  transition-all
+  duration-200
+  hover:border-cyan-500
+  hover:bg-slate-800
+      "
+          >
+            📸 Subir imagen
+
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+          </label>
+
+          {/* 🎥 CÁMARA */}
+          <div
+            className="
+            w-full
+          "
+          >
+            <CameraCapture
+              onCapture={(file) => {
+                const fakeEvent = {
+                  target: { files: [file] },
+                };
+
+                handleImageUpload(fakeEvent);
+              }}
+            />
+          </div>
+        </div>
       </div>
       <div className="mt-6">
         {results.length === 0 && (
@@ -327,21 +419,94 @@ export default function Home() {
           </p>
         )}
         {results.map((item, index) => (
-          <div key={index} className="border p-4 mb-4">
-            <p>
-              <strong>Fracción:</strong> {item.fraccion}
-            </p>
-            <p>
-              <strong>Confianza:</strong> {item.confidence}%
-            </p>
+          <div
+            key={index}
+            className="
+            mb-6
+            rounded-2xl
+            border
+            border-slate-800
+            bg-slate-950
+            p-6
+            shadow-lg
+            shadow-black/30
+            transition-all
+            duration-300
+            hover:border-cyan-500/40
+          "
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  {item.fraccion}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-400">
+                  {item.descripcion}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span
+                  className="
+        rounded-full
+        bg-cyan-500/20
+        px-3
+        py-1
+        text-sm
+        font-semibold
+        text-cyan-300
+      "
+                >
+                  {item.confidence}% confianza
+                </span>
+
+                {item.recommended && (
+                  <span
+                    className="
+          rounded-full
+          bg-amber-400/20
+          px-3
+          py-1
+          text-sm
+          font-semibold
+          text-amber-300
+        "
+                  >
+                    🔥 Recomendado
+                  </span>
+                )}
+              </div>
+            </div>
 
             <p>
               <strong>Descripción:</strong> {item.descripcion}
             </p>
-            <p>
-              <strong>IGI:</strong> {item.igi} | <strong>IVA:</strong>{" "}
-              {item.iva}
-            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="rounded-full bg-blue-500/20 px-3 py-1 text-sm text-blue-300">
+                IGI {item.igi}
+              </span>
+
+              <span className="rounded-full bg-violet-500/20 px-3 py-1 text-sm text-violet-300">
+                IVA {item.iva}
+              </span>
+
+              {item.nom_seguridad?.map((nom: string) => (
+                <span
+                  key={nom}
+                  className="
+        rounded-full
+        bg-emerald-500/20
+        px-3
+        py-1
+        text-sm
+        text-emerald-300
+      "
+                >
+                  {nom}
+                </span>
+              ))}
+            </div>
 
             {item.nom_seguridad?.length > 0 && (
               <p>
@@ -360,7 +525,7 @@ export default function Home() {
               <div className="mt-3 p-2 bg-gray-900 rounded text-sm text-gray-300">
                 <details className="mt-3 bg-gray-950 p-3 rounded">
                   <summary className="cursor-pointer font-semibold text-cyan-400">
-                  📋 Ver dictamen técnico
+                    📋 Ver dictamen técnico
                   </summary>
 
                   <div className="mt-3 text-sm space-y-2">
@@ -455,27 +620,52 @@ export default function Home() {
                 </details>
               </div>
             )}
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                className="rounded-xl
+  bg-emerald-500
+  px-4
+  py-2
+  font-semibold
+  text-white
+  transition-all
+  duration-200
+  hover:bg-emerald-400"
+                disabled={isSavingSearch || isSelecting || !query.trim()}
+                onClick={() => void handleSelect(item)}
+              >
+                {isSelecting ? "Guardando…" : "Elegir esta fracción"}
+              </button>
+              <button
+                className="rounded-xl
+  bg-fuchsia-600
+  px-4
+  py-2
+  font-semibold
+  text-white
+  transition-all
+  duration-200
+  hover:bg-fuchsia-500"
+                onClick={() => generateExportable(item)}
+              >
+                📄 Exportar dictamen
+              </button>
 
-            <button
-              className="bg-green-500 text-white px-3 py-1 mt-3 disabled:opacity-50"
-              disabled={isSavingSearch || isSelecting || !query.trim()}
-              onClick={() => void handleSelect(item)}
-            >
-              {isSelecting ? "Guardando…" : "Elegir esta fracción"}
-            </button>
-            <button
-              className="bg-purple-600 text-white px-3 py-1 mt-2 ml-2"
-              onClick={() => generateExportable(item)}
-            >
-              📄 Exportar dictamen
-            </button>
-
-            <button
-              className="bg-blue-900 text-white px-3 py-1 mt-2 ml-2"
-              onClick={() => generatePDF(item)}
-            >
-              📄 Exportar PDF
-            </button>
+              <button
+                className="rounded-xl
+  bg-cyan-900
+  px-4
+  py-2
+  font-semibold
+  text-white
+  transition-all
+  duration-200
+  hover:bg-cyan-800"
+                onClick={() => generatePDF(item)}
+              >
+                📄 Exportar PDF
+              </button>
+            </div>
           </div>
         ))}
         <div className="mt-10">

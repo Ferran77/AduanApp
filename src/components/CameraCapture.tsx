@@ -10,6 +10,7 @@ export default function CameraCapture({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isActive, setIsActive] = useState(false);
+  const [flash, setFlash] = useState(false);
 
   useEffect(() => {
     console.log("videoRef:", videoRef.current);
@@ -56,6 +57,12 @@ export default function CameraCapture({
   // 🛑 detener cámara
   const stopCamera = () => {
     stream?.getTracks().forEach((track) => track.stop());
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setStream(null);
     setIsActive(false);
   };
 
@@ -85,6 +92,12 @@ export default function CameraCapture({
         type: "image/jpeg",
       });
 
+      setFlash(true);
+
+      setTimeout(() => {
+        setFlash(false);
+      }, 150);
+
       console.log("📸 Foto capturada");
 
       onCapture(file);
@@ -99,48 +112,159 @@ export default function CameraCapture({
   }, []);
 
   return (
-    <div className="border p-4 rounded mt-4">
-      {!isActive ? (
+    <>
+      {/* 🎥 BOTÓN */}
+      {!isActive && (
         <button
           onClick={startCamera}
-          className="bg-blue-600 text-white px-4 py-2"
+          className="
+            w-full
+            rounded-2xl
+            border
+            border-slate-700
+            bg-slate-900
+            py-3
+            font-medium
+            text-white
+            transition-all
+            duration-200
+            hover:border-cyan-500
+            hover:bg-slate-800
+          "
         >
           📸 Abrir cámara
         </button>
-      ) : (
-        <>
-          <div className="relative w-full max-w-md">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-64 object-cover bg-black rounded"
+      )}
+
+      {/* 🌑 MODAL */}
+      {isActive && (
+        <div
+          className="
+          fixed
+          inset-0
+          z-50
+          flex
+          items-start
+          justify-center
+          bg-black/80
+          backdrop-blur-sm
+          px-4
+          pt-20
+        "
+        >
+          {/* ⚡ FLASH */}
+          {flash && (
+            <div
+              className="
+                pointer-events-none
+                absolute
+                inset-0
+                animate-pulse
+                bg-white
+                opacity-80
+              "
             />
+          )}
 
-            {/* 🎯 OVERLAY */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="border-4 border-white w-3/4 h-3/4 rounded-lg" />
-            </div>
-          </div>
-
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={capture}
-              className="bg-green-600 text-white px-4 py-2"
-            >
-              Tomar foto
-            </button>
-
+          {/* 📦 MODAL CONTENT */}
+          <div
+            className="
+              relative
+              w-full
+              max-w-2xl
+              rounded-3xl
+              border
+              border-slate-700
+              bg-slate-950
+              p-4
+              shadow-2xl
+              shadow-cyan-500/10
+            "
+          >
+            {/* ❌ CERRAR */}
             <button
               onClick={stopCamera}
-              className="bg-red-600 text-white px-4 py-2"
+              className="
+                absolute
+                right-4
+                top-4
+                z-10
+                rounded-full
+                bg-red-500
+                px-3
+                py-1
+                text-sm
+                font-bold
+                text-white
+                hover:bg-red-400
+              "
             >
-              Cerrar cámara
+              ✕
             </button>
+
+            {/* 🎥 VIDEO */}
+            <div className="relative overflow-hidden rounded-2xl">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="
+                  h-[420px]
+                  w-full
+                  object-cover
+                  bg-black
+                "
+              />
+
+              {/* 🎯 OVERLAY */}
+              <div
+                className="
+                  pointer-events-none
+                  absolute
+                  inset-0
+                  flex
+                  items-center
+                  justify-center
+                "
+              >
+                <div
+                  className="
+                    h-3/4
+                    w-3/4
+                    rounded-2xl
+                    border-4
+                    border-white/80
+                    shadow-[0_0_20px_rgba(255,255,255,0.5)]
+                  "
+                />
+              </div>
+            </div>
+
+            {/* 🎮 CONTROLES */}
+            <div className="mt-4 flex justify-center">
+              <button
+                onClick={capture}
+                className="
+                  rounded-2xl
+                  bg-emerald-500
+                  px-8
+                  py-3
+                  text-lg
+                  font-bold
+                  text-white
+                  transition-all
+                  duration-200
+                  hover:scale-105
+                  hover:bg-emerald-400
+                "
+              >
+                📸 Tomar foto
+              </button>
+            </div>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 }
