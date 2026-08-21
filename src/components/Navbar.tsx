@@ -48,10 +48,10 @@ export default function Navbar() {
         {/* 🔥 LOGO */}
         <Link href="/" className="flex items-center gap-3">
           <Image
-            src="/logo.png"
+            src="/logo-clasifia.png"
             alt="ClasifIAduana"
             width={140}
-            height={40}
+            height={30}
             className="h-auto w-auto"
           />
         </Link>
